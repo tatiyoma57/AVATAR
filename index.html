@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Chat Bot de Cuencas Hidrológicas</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+        max-width: 800px;
+        margin: 0 auto;
+      }
+      #log {
+        margin-top: 20px;
+        white-space: pre-wrap;
+        background: #f9f9f9;
+        padding: 10px;
+        border: 1px solid #ccc;
+        max-height: 400px;
+        overflow-y: auto;
+        border-radius: 5px;
+      }
+      .button-container {
+        margin-top: 20px;
+        display: flex;
+        gap: 10px;
+      }
+      button {
+        padding: 10px 15px;
+        font-size: 16px;
+        border-radius: 5px;
+        border: none;
+        cursor: pointer;
+      }
+      #startButton {
+        background-color: #4CAF50;
+        color: white;
+      }
+      #endButton {
+        background-color: #f44336;
+        color: white;
+        display: none;
+      }
+      .status {
+        color: #4CAF50;
+        font-weight: bold;
+        margin-top: 10px;
+      }
+      h1 {
+        color: #2196F3;
+      }
+      .topic-list {
+        margin-top: 10px;
+        color: #666;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Chat Bot de Cuencas Hidrológicas</h1>
+    <p>
+      Haz clic en el botón para iniciar la conversación. El bot formulará una
+      pregunta mediante voz, y luego podrás responder con tu voz.
+    </p>
+    <div class="topic-list">
+      <p>Temas disponibles:</p>
+      <ul>
+        <li>Cuencas hidrológicas</li>
+        <li>Hidrología</li>
+        <li>Erosión</li>
+        <li>Climatología</li>
+        <li>Cambio climático</li>
+      </ul>
+    </div>
+    <div class="button-container">
+      <button id="startButton">Iniciar Conversación</button>
+      <button id="endButton">Finalizar Conversación</button>
+    </div>
+    <div class="status" id="statusIndicator"></div>
+    <div id="log"></div>
+    
+    <script>
+      // Global variables
+      let recognition;
+      let isListening = false;
+      
+      // Log messages to the UI
+      function logMessage(message) {
+        const logDiv = document.getElementById('log');
+        logDiv.textContent += message + "\n";
+        logDiv.scrollTop = logDiv.scrollHeight; // Auto-scroll to bottom
+      }
+
+      // Update status indicator
+      function updateStatus(message) {
+        document.getElementById('statusIndicator').textContent = message;
+      }
+
+      // Speak the provided text using SpeechSynthesis API
+      function speak(text, callback) {
+        // Check if the SpeechSynthesis API is available
+        if (!('speechSynthesis' in window)) {
+          logMessage("Lo siento, tu navegador no soporta Speech Synthesis.");
+          if (callback) callback();
+          return;
+        }
+        
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'es-ES';
+        
+        if (callback) {
+          utterance.onend = callback;
+        }
+        
+        speechSynthesis.speak(utterance);
+      }
+
+      // Initialize speech recognition
+      function initRecognition() {
+        // Check for speech recognition API compatibility
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+          logMessage("Lo siento, tu navegador no soporta el Reconocimiento de Voz.");
+          return null;
+        }
+
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'es-ES';
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+        recognition.continuous = false; // Set to false to restart after each recognition
+        
+        // When a result is received, process the query
+        recognition.onresult = (event) => {
+          const transcript = event.results[0][0].transcript;
+          logMessage("Usuario dijo: " + transcript);
+          processUserQuery(transcript);
+        };
+
+        recognition.onerror = (event) => {
+          logMessage("Error en el reconocimiento de voz: " + event.error);
+          // Restart recognition on error, except for aborted errors
+          if (event.error !== 'aborted' && isListening) {
+            setTimeout(() => {
+              startListening();
+            }, 1000);
+          }
+        };
+
+        recognition.onend = () => {
+          // Don't log this to avoid cluttering the log
+          // Automatically restart if we're still in listening mode
+          if (isListening) {
+            startListening();
+          }
+        };
+
+        return recognition;
+      }
+      
+      // Start listening
+      function startListening() {
+        if (!recognition) {
+          recognition = initRecognition();
+          if (!recognition) return;
+        }
+        
+        try {
+          recognition.start();
+          updateStatus("Escuchando...");
+        } catch (error) {
+          console.error("Error starting recognition:", error);
+          // If we get an error starting, try again after a short delay
+          setTimeout(() => {
+            startListening();
+          }, 100);
+        }
+      }
+
+      // Stop listening
+      function stopListening() {
+        isListening = false;
+        updateStatus("");
+        
+        if (recognition) {
+          try {
+            recognition.stop();
+          } catch (error) {
+            console.error("Error stopping recognition:", error);
+          }
+        }
+      }
+
+      // End the chat conversation
+      function endChat() {
+        if (speechSynthesis.speaking) {
+          speechSynthesis.cancel();
+        }
+        
+        stopListening();
+        
+        logMessage("Chat Bot: Gracias por conversar conmigo. ¡Hasta pronto!");
+        updateStatus("Conversación finalizada");
+        
+        // Reset UI
+        document.getElementById('startButton').disabled = false;
+        document.getElementById('endButton').style.display = "none";
+        document.getElementById('startButton').style.display = "inline-block";
+      }
+
+      // Process the voice input query and produce an answer
+      function processUserQuery(query) {
+        // Temporarily stop listening while the bot is responding to avoid self-capture
+        try {
+          recognition.stop();
+        } catch (error) {
+          console.error("Error stopping recognition:", error);
+        }
+        
+        updateStatus("Procesando...");
+        
+        // Convert query to lowercase for simple matching
+        query = query.toLowerCase();
+        let response = "";
+
+        // Extended knowledge base for the chatbot
+        if (query.includes("cuenca")) {
+          response =
+            "Las cuencas hidrográficas son áreas delimitadas donde se recoge, conduce y dispersa el agua de lluvia. Son unidades fundamentales para la gestión del agua y los recursos naturales. ¿Te gustaría saber algo más específico sobre ellas, como su manejo o importancia ecológica?";
+        } 
+        else if (query.includes("hidrología")) {
+          response =
+            "La hidrología es la ciencia que estudia el comportamiento del agua en nuestro planeta, incluyendo el ciclo hidrológico y la calidad del agua. Permite comprender y gestionar los recursos hídricos disponibles. ¿Tienes alguna pregunta específica sobre estos procesos?";
+        } 
+        else if (query.includes("erosión") || query.includes("erosion")) {
+          response =
+            "La erosión es el proceso de desgaste, transporte y sedimentación de materiales del suelo por diversos agentes como el agua, el viento o la gravedad. En cuencas hidrográficas, la erosión hídrica es un problema grave que puede causar pérdida de suelo fértil, sedimentación en ríos y embalses, y aumentar el riesgo de inundaciones. El manejo adecuado de la vegetación y prácticas de conservación son fundamentales para su control.";
+        } 
+        else if (query.includes("climatología") || query.includes("climatologia") || query.includes("clima")) {
+          response =
+            "La climatología estudia el clima y sus variaciones a largo plazo. Para las cuencas hidrográficas, es esencial entender los patrones climáticos ya que determinan la disponibilidad de agua. Los factores como precipitación, temperatura, humedad y vientos influyen directamente en los procesos hidrológicos de una cuenca. Los estudios climatológicos permiten planificar la gestión del agua y prepararse para eventos extremos.";
+        } 
+        else if (query.includes("cambio climático") || query.includes("cambio climatico")) {
+          response =
+            "El cambio climático está alterando los patrones hidrológicos en las cuencas. Se observan fenómenos como lluvias más intensas pero menos frecuentes, aumento de sequías, derretimiento acelerado de glaciares y mayor evaporación. Estos cambios afectan la disponibilidad y calidad del agua, exigiendo estrategias de adaptación como infraestructura resiliente, sistemas de alerta temprana y gestión integrada de cuencas. La restauración de ecosistemas riparios también es fundamental para mitigar sus efectos.";
+        } 
+        else if (query.includes("ciclo")) {
+          response = 
+            "El ciclo hidrológico es el proceso de circulación del agua entre la atmósfera y la Tierra. Incluye la evaporación, condensación, precipitación, infiltración, escorrentía y transpiración. En una cuenca hidrográfica, este ciclo determina la disponibilidad de agua superficial y subterránea. ¿Deseas conocer más detalles sobre alguna de estas fases?";
+        } 
+        else if (query.includes("inundación") || query.includes("inundaciones")) {
+          response = 
+            "Las inundaciones ocurren cuando el agua desborda los cauces naturales. La gestión de cuencas hidrográficas es fundamental para prevenir y mitigar estos fenómenos mediante la implementación de sistemas de alerta temprana, infraestructuras de contención y planificación territorial adecuada. El cambio climático está intensificando estos eventos en muchas regiones.";
+        } 
+        else if (query.includes("sequía") || query.includes("sequia") || query.includes("sequias")) {
+          response = 
+            "Las sequías son períodos prolongados de déficit de agua que afectan a las cuencas hidrográficas. La gestión sostenible de cuencas puede aumentar la resiliencia frente a estos eventos mediante reservorios, sistemas de recarga de acuíferos, y protección de zonas de recarga hídrica. El monitoreo constante de variables climatológicas e hidrológicas es esencial para anticipar y mitigar sus efectos.";
+        }
+        else if (query.includes("manejo") || query.includes("gestión") || query.includes("gestion")) {
+          response = 
+            "El manejo integrado de cuencas hidrográficas es un enfoque holístico que considera todos los recursos y actividades dentro de una cuenca. Busca equilibrar las necesidades humanas con la sostenibilidad ambiental, involucrando a todos los actores en la toma de decisiones. Incluye medidas como reforestación, terrazas en laderas, control de contaminación, y regulación del uso del agua y del suelo.";
+        }
+        else if (query.includes("gracias") || query.includes("adiós") || query.includes("adios") || query.includes("hasta luego") || query.includes("terminar")) {
+          response = "Ha sido un placer ayudarte. Si tienes más preguntas sobre cuencas hidrológicas o cualquiera de nuestros temas, no dudes en iniciar una nueva conversación. ¡Hasta pronto!";
+          
+          // End chat after saying goodbye
+          speak(response, () => {
+            endChat();
+          });
+          
+          // Log the answer but return early to avoid restarting listening
+          logMessage("Chat Bot responde: " + response);
+          return;
+        } 
+        else {
+          response =
+            "Lo siento, no entendí tu consulta. Puedes preguntarme sobre temas como cuencas hidrológicas, hidrología, erosión, climatología o cambio climático. ¿Qué te gustaría saber?";
+        }
+
+        // Log the answer
+        logMessage("Chat Bot responde: " + response);
+        
+        // Answer with voice and then restart listening
+        updateStatus("Respondiendo...");
+        speak(response, () => {
+          // Resume listening after the bot finishes speaking
+          if (isListening) {
+            startListening();
+          }
+        });
+      }
+
+      // Start the chat conversation
+      function iniciarChat() {
+        // Clear log at the start of new conversation
+        document.getElementById('log').textContent = "";
+        
+        // Show end button and hide start button
+        document.getElementById('startButton').style.display = "none";
+        document.getElementById('endButton').style.display = "inline-block";
+        
+        isListening = true;
+        
+        const initialQuestion =
+          "Hola, soy tu experto en cuencas hidrográficas, hidrología, erosión, climatología y cambio climático. ¿Qué deseas saber sobre estos temas?";
+        
+        logMessage("Chat Bot: " + initialQuestion);
+        
+        // Start with the initial greeting and then begin listening
+        speak(initialQuestion, () => {
+          // Initialize and start recognition after bot finishes speaking
+          recognition = initRecognition();
+          startListening();
+        });
+      }
+
+      // Attach event listeners
+      document.getElementById('startButton').addEventListener('click', iniciarChat);
+      document.getElementById('endButton').addEventListener('click', endChat);
+    </script>
+  </body>
+</html>
